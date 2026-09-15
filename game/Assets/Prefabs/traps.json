@@ -1,0 +1,7 @@
+{
+  "laser":  { "durOff": 1500, "durTele": 380, "durOn": 950 },
+  "saw":    { "amplitude": 175, "speed": 1.0 },
+  "spikes": { "durHidden": 1250, "durWarn": 380, "durOut": 850 },
+  "crusher": { "durUp": 1600, "durWarn": 420, "slamTime": 120, "durHold": 700, "durRise": 850 },
+  "tesla":  { "durIdle": 1500, "durCharge": 750, "durZap": 480 }
+}
