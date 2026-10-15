@@ -40,6 +40,23 @@ const PRODUCTS = [
 /* Ежедневная награда: серия входов (streak), 7-дневный цикл. */
 const DAILY_REWARDS = [25, 50, 75, 100, 150, 200, 300];
 
+/* Ежедневные миссии: пул из 11, каждый день детерминированно выбираются 3 (MissionService).
+ * mode 'add' — счётчик суммируется за день; 'max' — лучшее значение в рамках забега за день.
+ * Награда — монеты (faucet экономики, см. docs/RETENTION.md). */
+const MISSIONS = [
+  { id: 'm_floors30', name: 'ПОДЪЁМ',       desc: 'Пройди в сумме 30 этажей',         type: 'floors',      mode: 'add', value: 30, reward: 40 },
+  { id: 'm_floors60', name: 'МАРАФОН',      desc: 'Пройди в сумме 60 этажей',         type: 'floors',      mode: 'add', value: 60, reward: 80 },
+  { id: 'm_runs3',    name: 'СМЕНЫ',        desc: 'Сыграй 3 забега',                  type: 'runs',        mode: 'add', value: 3,  reward: 30 },
+  { id: 'm_runs5',    name: 'НОЧНАЯ СМЕНА', desc: 'Сыграй 5 забегов',                 type: 'runs',        mode: 'add', value: 5,  reward: 50 },
+  { id: 'm_perf5',    name: 'ТОЧНОСТЬ',     desc: 'Сделай 5 идеальных остановок',     type: 'perfects',    mode: 'add', value: 5,  reward: 50 },
+  { id: 'm_coins25',  name: 'КАЗНА',        desc: 'Собери 25 монет в забегах',        type: 'coins',       mode: 'add', value: 25, reward: 40 },
+  { id: 'm_freeze30', name: 'ХРОНОМАСТЕР',  desc: 'Останови время в сумме 30 секунд', type: 'frozen_secs', mode: 'add', value: 30, reward: 60 },
+  { id: 'm_mini2',    name: 'КАЛИБРОВЩИК',  desc: 'Победи в 2 минииграх',             type: 'minigames',   mode: 'add', value: 2,  reward: 45 },
+  { id: 'm_revive1',  name: 'НЕУЯВИМЫЙ',    desc: 'Используй 1 возрождение',             type: 'revives',     mode: 'add', value: 1,  reward: 35 },
+  { id: 'm_floor20',  name: 'ВЫСОТЫ',       desc: 'Достигни 20 этажа за один забег',  type: 'floor_run',   mode: 'max', value: 20, reward: 80 },
+  { id: 'm_combo4',   name: 'КОМБО-МАСТЕР', desc: 'Собери комбо ×4 за один забег',    type: 'combo',       mode: 'max', value: 4,  reward: 60 }
+];
+
 /* Достижения: коллекционные + мастерство. Награда — монеты (faucet экономики). */
 const ACHIEVEMENTS = [
   { id: 'f3',  name: 'ПЕРВЫЙ ПОДЪЁМ',  desc: 'Пройди 3 этажа за один забег',

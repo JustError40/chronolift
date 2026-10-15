@@ -30,29 +30,44 @@ class GameOverScene extends Phaser.Scene {
       fontFamily: 'Arial', fontSize: '21px', color: '#eaf6ff', align: 'center', lineSpacing: 8
     }).setOrigin(0.5);
 
+    /* динамическая вёрстка: блоки наград сдвигают кнопки вниз */
+    let yCursor = 300;
     if (d.unlocks && d.unlocks.length) {
       const names = d.unlocks.map((a) => a.name).join(',\n');
-      const u = this.add.text(240, 330, '🏆 ДОСТИЖЕНИЯ:\n' + names +
+      const u = this.add.text(240, yCursor, '🏆 ДОСТИЖЕНИЯ:\n' + names +
         '\nнаграда: +' + d.unlocks.reduce((s, a) => s + a.reward, 0) + ' монет', {
         fontFamily: 'Arial', fontSize: '16px', fontStyle: 'bold', color: '#2fd6a3',
         backgroundColor: '#101826dd', padding: { x: 12, y: 8 }, align: 'center', lineSpacing: 6
       }).setOrigin(0.5);
       this.sfx.unlock();
       this.tweens.add({ targets: u, angle: 2, duration: 150, yoyo: true, repeat: 5 });
+      yCursor += 95;
     }
 
-    makeButton(this, 240, 440, 280, 62, 'ЕЩЁ РАЗ', {
+    /* миссии, выполненные в этом забеге — напоминание забрать награду (ретеншн-петля) */
+    if (d.missionsDone && d.missionsDone.length) {
+      const mn = d.missionsDone.map((a) => a.name).join(',\n');
+      this.add.text(240, yCursor, '🎯 МИССИИ:\n' + mn +
+        '\nзаберите награду в меню', {
+        fontFamily: 'Arial', fontSize: '16px', fontStyle: 'bold', color: '#ffc93c',
+        backgroundColor: '#101826dd', padding: { x: 12, y: 8 }, align: 'center', lineSpacing: 6
+      }).setOrigin(0.5);
+      yCursor += 95;
+    }
+
+    const playY = Math.min(yCursor + 20, 470);
+    makeButton(this, 240, playY, 280, 62, 'ЕЩЁ РАЗ', {
       fontSize: 26, color: 0x123a2e, accent: 0x2fd6a3,
       onClick: () => this.scene.start('Game')
     });
-    makeButton(this, 240, 516, 280, 52, 'МЕНЮ', {
+    makeButton(this, 240, playY + 76, 280, 52, 'МЕНЮ', {
       onClick: () => this.scene.start('Menu')
     });
 
     this.x2used = false;
-    const x2r = this.add.rectangle(240, 592, 280, 52, 0x3a2e10, 0.98)
+    const x2r = this.add.rectangle(240, playY + 152, 280, 52, 0x3a2e10, 0.98)
       .setStrokeStyle(2, 0xffc93c).setInteractive({ useHandCursor: true });
-    this.x2t = this.add.text(240, 592, '×2 МОНЕТЫ (реклама)', {
+    this.x2t = this.add.text(240, playY + 152, '×2 МОНЕТЫ (реклама)', {
       fontFamily: 'Arial', fontSize: '20px', fontStyle: 'bold', color: '#ffe89b'
     }).setOrigin(0.5);
     x2r.on('pointerdown', async () => {
@@ -72,7 +87,7 @@ class GameOverScene extends Phaser.Scene {
       }
     });
 
-    this.add.text(240, 690, 'Всего монет: ' + save.coins + '   ·   Рекорд: ' + save.best.floors + ' этажей', {
+    this.add.text(240, 760, 'Всего монет: ' + save.coins + '   ·   Рекорд: ' + save.best.floors + ' этажей', {
       fontFamily: 'Arial', fontSize: '16px', color: '#9fb4c8'
     }).setOrigin(0.5);
   }

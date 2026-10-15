@@ -38,6 +38,7 @@ class BootScene extends Phaser.Scene {
   await YandexClient.init();
   // 2) сохранение: облако (если свежее) + миграция
   await resolveSaveFromCloud();
+  MissionService.rolloverIfNeeded();  // новый день -> новые миссии
   AnalyticsService.track('session_start', { authorized: YandexClient.isAuthorized() });
 
   // 3) запуск движка
@@ -51,7 +52,7 @@ class BootScene extends Phaser.Scene {
     render: { antialias: true, powerPreference: 'high-performance' },
     disableContextMenu: true,
     fps: { target: 60 },
-    scene: [BootScene, MenuScene, GameScene, GameOverScene, SkinsScene, ShopScene, AchievementsScene]
+    scene: [BootScene, MenuScene, GameScene, GameOverScene, SkinsScene, ShopScene, AchievementsScene, MissionsScene]
   });
 
   // 3.1) требования Яндекс Игр: готовность + пауза/возобновление платформы

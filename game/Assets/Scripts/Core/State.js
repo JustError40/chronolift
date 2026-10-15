@@ -3,7 +3,7 @@
  */
 'use strict';
 
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 
 function defaultSave() {
   return {
@@ -17,6 +17,12 @@ function defaultSave() {
     games: 0,
     streak: 0,
     lastDaily: '',
+    missions: {                               // ежедневные миссии (MissionService)
+      date: '',                               // YYYY-MM-DD, к какому дню относятся
+      selected: [],                           // id выбранных на день миссий (3)
+      counters: {},                           // тип метрики -> прогресс за день
+      claimed: {}                             // id миссии -> true (награду забрали)
+    },
     selectedSkin: 'orange',
     unlocks: { mint: false, violet: false },   // gold открывается через purchases
     purchases: {},                              // id товара -> true (IAP, облачно)
@@ -37,8 +43,12 @@ function migrateSave(raw) {
   out.unlocks = Object.assign(defaultSave().unlocks, raw.unlocks || {});
   out.purchases = Object.assign({}, raw.purchases || {});
   out.achievements = Array.isArray(raw.achievements) ? raw.achievements : [];
-  out.version = SAVE_VERSION;
-  return out;
+    out.missions = Object.assign(defaultSave().missions, raw.missions || {});
+    if (!Array.isArray(out.missions.selected)) out.missions.selected = [];
+    if (!out.missions.counters || typeof out.missions.counters !== 'object') out.missions.counters = {};
+    if (!out.missions.claimed || typeof out.missions.claimed !== 'object') out.missions.claimed = {};
+    out.version = SAVE_VERSION;
+    return out;
 }
 
 function loadSaveLocal() {

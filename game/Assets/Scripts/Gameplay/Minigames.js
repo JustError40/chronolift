@@ -117,6 +117,8 @@ class MinigameManager {
       gs.sfx.reward();
       gs.hud.toast(a.type === 'calibration' ? 'КАЛИБРОВКА ТОЧНА! +12 энергии, +5 монет'
         : 'ЯЧЕЙКА ЗАРЯЖЕНА! +15 энергии, +5 монет', '#2fd6a3');
+      gs.trackMission('minigames', 1);
+      gs.trackMission('coins', 5);
     } else {
       gs.sfx.alarm();
       gs.hud.toast('Мимо… бонус упущен', '#9fb4c8');

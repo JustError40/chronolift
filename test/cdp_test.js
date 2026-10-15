@@ -86,24 +86,29 @@ async function main() {
   await click(240, 490);            // забрать награду
   await sleep(900);
   await screenshot('ui_3_menu.png');
-  await click(130, 668);            // скины
+  await click(130, 668);            // миссии дня
   await sleep(700);
-  await screenshot('ui_4_skins.png');
+  await screenshot('ui_4_missions.png');
+  await click(240, 735);            // назад
+  await sleep(500);
+  await click(350, 668);            // скины
+  await sleep(700);
+  await screenshot('ui_5_skins.png');
   await click(240, 600);            // назад
   await sleep(500);
-  await click(350, 668);            // магазин
+  await click(130, 736);            // магазин
   await sleep(700);
-  await screenshot('ui_5_shop.png');
+  await screenshot('ui_6_shop.png');
   await click(240, 690);            // назад
   await sleep(500);
-  await click(130, 736);            // достижения
+  await click(350, 736);            // достижения
   await sleep(700);
-  await screenshot('ui_6_ach.png');
+  await screenshot('ui_7_ach.png');
   await click(240, 730);            // назад
   await sleep(500);
-  await click(350, 736);            // лидерборд
+  await click(34, 74);              // лидерборд (иконка в шапке)
   await sleep(1800);
-  await screenshot('ui_7_board.png');
+  await screenshot('ui_8_board.png');
 
   const errors = await evaluate('JSON.stringify(window.__ERRORS||[])');
   const saveState = await evaluate("localStorage.getItem('chronolift_save')");

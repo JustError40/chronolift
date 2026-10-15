@@ -36,10 +36,28 @@ class MenuScene extends Phaser.Scene {
       fontSize: 30, color: 0x123a2e, accent: 0x2fd6a3,
       onClick: () => { AnalyticsService.track('menu_play', {}); this.scene.start('Game'); }
     });
-    makeButton(this, 130, 646, 250, 52, 'СКИНЫ', { onClick: () => this.scene.start('Skins') });
-    makeButton(this, 350, 646, 250, 52, 'МАГАЗИН', { onClick: () => this.scene.start('Shop') });
-    makeButton(this, 130, 712, 250, 52, 'ДОСТИЖЕНИЯ', { onClick: () => this.scene.start('Achievements') });
-    makeButton(this, 350, 712, 250, 52, 'ЛИДЕРБОРД', { onClick: () => this.toggleBoard() });
+    makeButton(this, 130, 646, 250, 52, 'МИССИИ', {
+      accent: 0xffc93c,
+      onClick: () => { AnalyticsService.track('menu_missions', {}); this.scene.start('Missions'); }
+    });
+    makeButton(this, 350, 646, 250, 52, 'СКИНЫ', { onClick: () => this.scene.start('Skins') });
+    makeButton(this, 130, 712, 250, 52, 'МАГАЗИН', { onClick: () => this.scene.start('Shop') });
+    makeButton(this, 350, 712, 250, 52, 'ДОСТИЖЕНИЯ', { onClick: () => this.scene.start('Achievements') });
+
+    // бейдж «есть невыбранные награды» на кнопке МИССИИ (soft CTA)
+    const claimN = MissionService.claimableCount();
+    if (claimN > 0) {
+      this.add.circle(252, 624, 13, 0xff3b3b, 1).setDepth(8);
+      this.add.text(252, 624, String(claimN), {
+        fontFamily: 'Arial', fontSize: '15px', fontStyle: 'bold', color: '#fff'
+      }).setOrigin(0.5).setDepth(9);
+    }
+
+    // лидерборд — иконка слева под строкой входа (справочный раздел, не CTA)
+    this.add.text(26, 74, '🏆', {
+      fontFamily: 'Arial', fontSize: '22px', color: '#cfe3f5'
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.toggleBoard());
 
     // звук
     const snd = this.add.text(438, 32, save.sound ? '♪' : '✕', {
@@ -154,7 +172,9 @@ class MenuScene extends Phaser.Scene {
       this.sfx.reward();
       this.coinLabel.setText('× ' + save.coins);
       c.destroy();
-      this.hudToast('+' + p.reward + ' монет! Возвращайся завтра', '#ffc93c');
+      const cm = MissionService.claimableCount();
+      this.hudToast('+' + p.reward + ' монет! Возвращайся завтра' +
+        (cm ? ' · миссии ждут награды' : ''), '#ffc93c');
     });
   }
 

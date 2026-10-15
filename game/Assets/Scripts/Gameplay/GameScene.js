@@ -21,6 +21,8 @@ class GameScene extends Phaser.Scene {
     this.coinsRun = 0; this.perfectsRun = 0; this.combo = 0;
     this.reviveUsed = false; this.dead = false; this.invincible = 0;
     this.runTime = 0;
+    this.missionsDone = [];   // миссии, выполненные в этом забеге (для GameOver)
+    this.frozenAcc = 0;       // накопитель секунд заморозки для миссии frozen_secs
 
     this.traps = []; this.coinObjs = []; this.ledges = []; this.hints = [];
     this.nextFloorY = 700 - CFG.floorH;
@@ -216,6 +218,8 @@ class GameScene extends Phaser.Scene {
     this.roofY -= speed * dt;
 
     if (this.frozen) {
+      this.frozenAcc += dt;
+      if (this.frozenAcc >= 1) { const s = Math.floor(this.frozenAcc); this.frozenAcc -= s; this.trackMission('frozen_secs', s); }
       this.energy -= CFG.drainRate * dt;
       if (this.energy <= 0) {
         this.energy = 0;
@@ -267,6 +271,8 @@ class GameScene extends Phaser.Scene {
     if (this.floorsPassed % 10 === 0) {
       AnalyticsService.track('run_milestone', { floors: this.floorsPassed });
     }
+    this.trackMission('floors', 1);
+    this.trackMission('floor_run', this.floorsPassed, 'max');
     if (trap.hadFreezeWhileDanger) {
       this.perfectsRun++;
       this.combo++;
@@ -275,6 +281,9 @@ class GameScene extends Phaser.Scene {
       this.score += 5;
       this.sfx.perfect();
       this.hud.toast('ИДЕАЛЬНО! +' + bonus + ' монет' + (this.combo > 1 ? '  x' + this.combo : ''), '#57f2ff');
+      this.trackMission('perfects', 1);
+      this.trackMission('combo', this.combo, 'max');
+      this.trackMission('coins', bonus);
     } else {
       this.combo = 0;
     }
@@ -312,6 +321,7 @@ class GameScene extends Phaser.Scene {
         c.taken = true;
         c.img.destroy();
         this.coinsRun++;
+        this.trackMission('coins', 1);
         this.score += 2;
         this.sfx.coin();
       }
@@ -370,6 +380,17 @@ class GameScene extends Phaser.Scene {
         g.lineStyle(1.5, danger ? 0xff3b3b : 0xffc93c, danger ? 0.55 : 0.25);
         g.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
       }
+    }
+  }
+
+  /* Прогресс ежедневных миссий: счётчик + тост о выполнении (награду забирают в меню) */
+  trackMission(type, amount, mode) {
+    const fresh = MissionService.progress(type, amount, mode);
+    for (const m of fresh) {
+      if (this.missionsDone.some((x) => x.id === m.id)) continue;
+      this.missionsDone.push(m);
+      this.hud.toast('🎯 МИССИЯ ВЫПОЛНЕНА: ' + m.name + ' — награда в меню', '#ffc93c');
+      this.sfx.reward();
     }
   }
 
@@ -448,6 +469,7 @@ class GameScene extends Phaser.Scene {
 
   revive() {
     this.reviveUsed = true;
+    this.trackMission('revives', 1);
     this.dead = false;
     this.energy = Math.round(this.energyMax * 0.6);
     this.overload = false;
@@ -467,6 +489,7 @@ class GameScene extends Phaser.Scene {
     EconomyService.grant(this.coinsRun, 'run_coins');
     save.perfects += this.perfectsRun;
     save.games++;
+    this.trackMission('runs', 1);
     saveNow();
 
     const unlocks = AchievementService.check();
@@ -476,7 +499,8 @@ class GameScene extends Phaser.Scene {
 
     this.scene.start('GameOver', {
       score: totalScore, floors: this.floorsPassed, coins: this.coinsRun,
-      perfects: this.perfectsRun, isBest: isBest, unlocks: unlocks
+      perfects: this.perfectsRun, isBest: isBest, unlocks: unlocks,
+      missionsDone: this.missionsDone
     });
   }
 }
