@@ -11,6 +11,21 @@ const CFG = {
   reviveCostCoins: 100
 };
 
+/* Масштаб отрисовки. Мир игры — всегда CFG.W×CFG.H (480×800), все координаты в коде в нём.
+ * Холст же создаётся в RENDER_SCALE раз больше, а камера каждой сцены увеличивает мир
+ * в столько же раз (fitCamera). Иначе браузер растягивал холст 480×800 на экран — мыло:
+ * на мониторе 2560×1440 примерно в 1,8 раза, на телефоне с плотностью 3 — в 2,4 раза.
+ * Считается по экрану, чтобы и в полноэкранном режиме было чётко, и по окну — на случай, если
+ * браузер сообщает о экране неправдоподобный размер (бывает в iframe и headless); берётся больший.
+ * Не больше 3. */
+const RENDER_SCALE = (function () {
+  const dpr = window.devicePixelRatio || 1;
+  const fit = (w, h) => Math.min((w || 0) / CFG.W, (h || 0) / CFG.H);
+  const scr = window.screen || {};
+  const s = Math.max(fit(scr.width, scr.height), fit(window.innerWidth, window.innerHeight)) * dpr;
+  return Math.min(3, Math.max(1, Math.round(s * 4) / 4));  // шаг 0,25: холст без дробных пикселей
+})();
+
 /* Скины: 3 открываются достижениями, золотой — покупкой в магазине.
  * Бонусы: regenMul — скорость восстановления энергии, energyMul — макс. энергия. */
 const SKINS = [
@@ -52,7 +67,7 @@ const MISSIONS = [
   { id: 'm_coins25',  name: 'КАЗНА',        desc: 'Собери 25 монет в забегах',        type: 'coins',       mode: 'add', value: 25, reward: 40 },
   { id: 'm_freeze30', name: 'ХРОНОМАСТЕР',  desc: 'Останови время в сумме 30 секунд', type: 'frozen_secs', mode: 'add', value: 30, reward: 60 },
   { id: 'm_mini2',    name: 'КАЛИБРОВЩИК',  desc: 'Победи в 2 минииграх',             type: 'minigames',   mode: 'add', value: 2,  reward: 45 },
-  { id: 'm_revive1',  name: 'НЕУЯВИМЫЙ',    desc: 'Используй 1 возрождение',             type: 'revives',     mode: 'add', value: 1,  reward: 35 },
+  { id: 'm_revive1',  name: 'НЕУЯЗВИМЫЙ',   desc: 'Используй 1 возрождение',             type: 'revives',     mode: 'add', value: 1,  reward: 35 },
   { id: 'm_floor20',  name: 'ВЫСОТЫ',       desc: 'Достигни 20 этажа за один забег',  type: 'floor_run',   mode: 'max', value: 20, reward: 80 },
   { id: 'm_combo4',   name: 'КОМБО-МАСТЕР', desc: 'Собери комбо ×4 за один забег',    type: 'combo',       mode: 'max', value: 4,  reward: 60 }
 ];

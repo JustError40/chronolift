@@ -25,7 +25,7 @@ async function main() {
   const chrome = spawn(CHROME, [
     '--headless=new', '--disable-gpu', '--no-sandbox',
     `--remote-debugging-port=${PORT}`, `--user-data-dir=${tmp}`,
-    '--window-size=480,800', '--hide-scrollbars', 'about:blank'
+    '--window-size=480,800', '--force-device-scale-factor=' + (process.env.CHRONO_DPR || 1), '--hide-scrollbars', 'about:blank'
   ], { stdio: 'ignore' });
   process.on('exit', () => { try { chrome.kill(); } catch (e) {} });
   if (!await waitDebugger()) { console.error('no debugger'); process.exit(1); }
@@ -73,7 +73,13 @@ async function main() {
   await screenshot('shot_game_mid.png');
   await sleep(9000);
   await screenshot('shot_game_late.png');
-  const testlog = await evaluate("(document.getElementById('testlog')||{textContent:'null'}).textContent");
+  // итог автопилот пишет через ~31,5 с после загрузки (Boot.js: старт 1,5 с + забег 30 с),
+  // а не к 18-й секунде — раньше здесь всегда было null
+  let testlog = 'null';
+  for (let i = 0; i < 40 && testlog === 'null'; i++) {
+    await sleep(500);
+    testlog = await evaluate("(document.getElementById('testlog')||{textContent:'null'}).textContent");
+  }
   console.log('TESTLOG:', testlog);
 
   /* ---------- Проход B: сцены UI ---------- */
@@ -109,15 +115,32 @@ async function main() {
   await click(34, 74);              // лидерборд (иконка в шапке)
   await sleep(1800);
   await screenshot('ui_8_board.png');
+  await click(34, 74);              // закрыть лидерборд
+  await sleep(400);
+  await click(240, 768);            // настройки
+  await sleep(700);
+  await screenshot('ui_9_settings.png');
+  const inSettings = await evaluate("window.__GAME.scene.isActive('Settings')");
+  console.log('SETTINGS OPENED:', inSettings);
+  await click(240, 730);            // назад
+  await sleep(500);
+  const backInMenu = await evaluate("window.__GAME.scene.isActive('Menu')");
 
   const errors = await evaluate('JSON.stringify(window.__ERRORS||[])');
   const saveState = await evaluate("localStorage.getItem('chronolift_save')");
   console.log('ERRORS:', errors);
   console.log('SAVE:', saveState ? saveState.slice(0, 300) : 'null');
 
+  // холст в разрешении экрана: CHRONO_DPR=2 node test/cdp_test.js -> масштаб 2, холст 960×1600
+  const render = JSON.parse(await evaluate("JSON.stringify({scale: RENDER_SCALE, canvas: document.querySelector('canvas').width + 'x' + document.querySelector('canvas').height, zoom: window.__GAME.scene.getScene('Menu').cameras.main.zoom})"));
+  const renderOk = render.canvas === Math.round(480 * render.scale) + 'x' + Math.round(800 * render.scale) && render.zoom === render.scale;
+  console.log('RENDER:', JSON.stringify(render), renderOk ? 'PASS' : 'FAIL');
+
+  const ok = testlog !== 'null' && errors === '[]' && inSettings && backInMenu && renderOk;
+  console.log(ok ? 'ALL PASS' : 'FAIL');
   ws.close();
   try { chrome.kill(); } catch (e) {}
-  process.exit(0);
+  process.exit(ok ? 0 : 1);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

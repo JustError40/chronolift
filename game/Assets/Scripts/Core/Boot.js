@@ -8,6 +8,11 @@ window.__ERRORS = [];
 window.addEventListener('error', (e) => {
   window.__ERRORS.push(String(e.message || e) + ' @ ' + String((e.error && e.error.stack) || '').split('\n')[1]);
 });
+// ошибки в async-коде (весь запуск ниже — async) не доходят до 'error', ловим отдельно
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  window.__ERRORS.push('unhandled rejection: ' + String((r && r.message) || r) + ' @ ' + String((r && r.stack) || '').split('\n')[1]);
+});
 window.__AUTOTEST = /[?&]autotest=1/.test(location.search);
 
 class BootScene extends Phaser.Scene {
@@ -29,6 +34,7 @@ class BootScene extends Phaser.Scene {
     g.fillStyle(0x57f2ff, 1); g.fillCircle(8, 8, 8);
     g.generateTexture('dot_cyan', 16, 16);
     g.destroy();
+    this.scene.launch('MusicLoader');   // фоновая загрузка музыки (Core/Music.js): старт её не ждёт
     this.scene.start('Menu');
   }
 }
@@ -45,14 +51,15 @@ class BootScene extends Phaser.Scene {
   window.__GAME = new Phaser.Game({
     type: Phaser.WEBGL,
     parent: 'game',
-    width: CFG.W,
-    height: CFG.H,
+    width: Math.round(CFG.W * RENDER_SCALE),   // холст в разрешении экрана, мир — 480×800 (Config.js)
+    height: Math.round(CFG.H * RENDER_SCALE),
     backgroundColor: '#0b0f17',
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     render: { antialias: true, powerPreference: 'high-performance' },
+    pipeline: { ShockwavePipeline: ShockwavePipeline },   // волна при остановке времени (Gameplay/Shockwave.js)
     disableContextMenu: true,
     fps: { target: 60 },
-    scene: [BootScene, MenuScene, GameScene, GameOverScene, SkinsScene, ShopScene, AchievementsScene, MissionsScene]
+    scene: [BootScene, MenuScene, GameScene, GameOverScene, SkinsScene, ShopScene, AchievementsScene, MissionsScene, SettingsScene, MusicLoaderScene]
   });
 
   // 3.1) требования Яндекс Игр: готовность + пауза/возобновление платформы

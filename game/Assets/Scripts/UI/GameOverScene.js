@@ -8,6 +8,7 @@ class GameOverScene extends Phaser.Scene {
   constructor() { super('GameOver'); }
   init(data) { this.data = data; }
   create() {
+    fitCamera(this);
     this.sfx = new Sfx(this);
     this.cameras.main.setBackgroundColor('#0b0f17');
     this.add.tileSprite(240, 400, 480, 800, 'bg_wall_panel')
@@ -25,37 +26,40 @@ class GameOverScene extends Phaser.Scene {
       this.tweens.add({ targets: nb, scale: 1.12, duration: 500, yoyo: true, repeat: -1 });
     }
 
-    this.add.text(240, 225,
-      'ЭТАЖЕЙ: ' + d.floors + '\nОЧКОВ: ' + d.score + '\nМОНЕТ: ' + d.coins + '\nИДЕАЛЬНЫХ: ' + d.perfects, {
+    const stats = this.add.text(240, 185,
+      'ЭТАЖЕЙ: ' + d.floors + '   ·   ОЧКОВ: ' + d.score + '\nМОНЕТ: ' + d.coins + '   ·   ИДЕАЛЬНЫХ: ' + d.perfects, {
       fontFamily: 'Arial', fontSize: '21px', color: '#eaf6ff', align: 'center', lineSpacing: 8
-    }).setOrigin(0.5);
+    }).setOrigin(0.5, 0);
 
-    /* динамическая вёрстка: блоки наград сдвигают кнопки вниз */
-    let yCursor = 300;
+    /* динамическая вёрстка: каждый блок встаёт под предыдущий по его реальной высоте
+     * (раньше шаг был фиксированный, 95 px, и блок из 4 достижений закрывал
+     * строки «ИДЕАЛЬНЫХ» и «награда: +N монет») */
+    let yCursor = stats.y + stats.height + 14;
+    const block = (text, color) => {
+      const t = this.add.text(240, yCursor, text, {
+        fontFamily: 'Arial', fontSize: '16px', fontStyle: 'bold', color: color,
+        backgroundColor: '#101826dd', padding: { x: 12, y: 8 }, align: 'center', lineSpacing: 6,
+        wordWrap: { width: 400 }
+      }).setOrigin(0.5, 0);
+      yCursor += t.height + 10;
+      return t;
+    };
     if (d.unlocks && d.unlocks.length) {
-      const names = d.unlocks.map((a) => a.name).join(',\n');
-      const u = this.add.text(240, yCursor, '🏆 ДОСТИЖЕНИЯ:\n' + names +
-        '\nнаграда: +' + d.unlocks.reduce((s, a) => s + a.reward, 0) + ' монет', {
-        fontFamily: 'Arial', fontSize: '16px', fontStyle: 'bold', color: '#2fd6a3',
-        backgroundColor: '#101826dd', padding: { x: 12, y: 8 }, align: 'center', lineSpacing: 6
-      }).setOrigin(0.5);
+      const names = d.unlocks.map((a) => a.name).join(', ');
+      const u = block('🏆 ДОСТИЖЕНИЯ: ' + names +
+        '\nнаграда: +' + d.unlocks.reduce((s, a) => s + a.reward, 0) + ' монет', '#2fd6a3');
       this.sfx.unlock();
       this.tweens.add({ targets: u, angle: 2, duration: 150, yoyo: true, repeat: 5 });
-      yCursor += 95;
     }
 
     /* миссии, выполненные в этом забеге — напоминание забрать награду (ретеншн-петля) */
     if (d.missionsDone && d.missionsDone.length) {
-      const mn = d.missionsDone.map((a) => a.name).join(',\n');
-      this.add.text(240, yCursor, '🎯 МИССИИ:\n' + mn +
-        '\nзаберите награду в меню', {
-        fontFamily: 'Arial', fontSize: '16px', fontStyle: 'bold', color: '#ffc93c',
-        backgroundColor: '#101826dd', padding: { x: 12, y: 8 }, align: 'center', lineSpacing: 6
-      }).setOrigin(0.5);
-      yCursor += 95;
+      const mn = d.missionsDone.map((a) => a.name).join(', ');
+      block('🎯 МИССИИ: ' + mn + '\nзаберите награду в меню', '#ffc93c');
     }
 
-    const playY = Math.min(yCursor + 20, 470);
+    // три кнопки (до playY + 178) должны уместиться над строкой «Всего монет» (y = 760)
+    const playY = Math.min(Math.max(yCursor + 31, 400), 560);
     makeButton(this, 240, playY, 280, 62, 'ЕЩЁ РАЗ', {
       fontSize: 26, color: 0x123a2e, accent: 0x2fd6a3,
       onClick: () => this.scene.start('Game')
@@ -70,21 +74,29 @@ class GameOverScene extends Phaser.Scene {
     this.x2t = this.add.text(240, playY + 152, '×2 МОНЕТЫ (реклама)', {
       fontFamily: 'Arial', fontSize: '20px', fontStyle: 'bold', color: '#ffe89b'
     }).setOrigin(0.5);
-    x2r.on('pointerdown', async () => {
+    // реклама за награду — только после входа (requireAuth); ошибка — сообщение под кнопкой
+    const adMsg = this.add.text(240, playY + 188, '', {
+      fontFamily: 'Arial', fontSize: '13px', color: '#ff9a9a', align: 'center'
+    }).setOrigin(0.5);
+    x2r.on('pointerdown', () => {
       if (this.x2used) return;
-      this.x2t.setText('Загрузка рекламы…');
-      x2r.disableInteractive();
-      const ok = await AdsService.showRewarded('double_coins');
-      if (ok) {
-        this.x2used = true;
-        EconomyService.grant(d.coins, 'ad_double');
-        this.x2t.setText('МОНЕТЫ УДВОЕНЫ! +' + d.coins);
-        x2r.setFillStyle(0x123a2e, 1);
-        this.sfx.coin();
-      } else {
-        this.x2t.setText('×2 МОНЕТЫ (реклама)');
-        x2r.setInteractive({ useHandCursor: true });
-      }
+      requireAuth(this, 'Реклама за награду', async () => {
+        this.x2t.setText('Загрузка рекламы…');
+        adMsg.setText('');
+        x2r.disableInteractive();
+        const ok = await AdsService.showRewarded('double_coins');
+        if (ok) {
+          this.x2used = true;
+          EconomyService.grant(d.coins, 'ad_double');
+          this.x2t.setText('МОНЕТЫ УДВОЕНЫ! +' + d.coins);
+          x2r.setFillStyle(0x123a2e, 1);
+          this.sfx.coin();
+        } else {
+          this.x2t.setText('×2 МОНЕТЫ (реклама)');
+          adMsg.setText('Награда не получена: реклама закрыта раньше или недоступна');
+          x2r.setInteractive({ useHandCursor: true });
+        }
+      });
     });
 
     this.add.text(240, 760, 'Всего монет: ' + save.coins + '   ·   Рекорд: ' + save.best.floors + ' этажей', {
