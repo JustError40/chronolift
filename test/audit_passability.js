@@ -55,6 +55,7 @@ const LESSONS = ['laser', 'saw', 'spikes', 'crusher', 'tesla'];
 const SEEDS = +(process.env.SEEDS || 2000), FLOORS = 300;
 let worst = Infinity, worstAt = '';
 const series = [], rests = [];
+let bonusN = 0, bonusShort = 0, bonusMin = Infinity, bonusMaxGap = 0, lastBonusJ = 0;
 for (let seed = 1; seed <= SEEDS; seed++) {
   const tutorial = seed % 4 === 0;                       // часть шахт — с обучением
   const pl = new FloorPlanner(mulberry32(seed), TRAP_SPANS, CFG);
@@ -72,6 +73,14 @@ for (let seed = 1; seed <= SEEDS; seed++) {
     const enter = y + y2 + 92;                           // roofY, на котором игрок касается зоны
     const exit = y + y1 - 2;                             // roofY, на котором выходит из неё
     const free = (prev === null ? 700 : prev) - enter;
+    // передышка с мини-игрой: от выхода из прошлой зоны до входа в эту — не меньше bonusSec
+    if (p.bonus) {
+      const t = free / v;
+      bonusN++; bonusMin = Math.min(bonusMin, t);
+      if (t < PLAN.bonusSec - 1e-6) bonusShort++;
+      if (lastBonusJ) bonusMaxGap = Math.max(bonusMaxGap, j - lastBonusJ);
+      lastBonusJ = j;
+    }
     if (free < 0) { check(false, `seed ${seed} этаж ${j}: зоны соседних этажей перекрываются`); }
     E = Math.min(CFG.energyMax, E + CFG.regenRate * free / v);
     const tHold = (enter - exit) / v;                    // всё время контакта с зоной
@@ -80,7 +89,9 @@ for (let seed = 1; seed <= SEEDS; seed++) {
     prev = exit;
   }
   series.push(cur);
+  lastBonusJ = 0;
 }
+check(bonusShort === 0 && bonusN > 0, `передышки под мини-игру: ${bonusN}, короче ${PLAN.bonusSec} с — ${bonusShort} (минимум ${bonusMin.toFixed(2)} с), самый большой разрыв между ними — ${bonusMaxGap} этажей`);
 check(worst >= PLAN.minEnergy, `худший запас при игре «держать всю зону» и держать на ${Math.round((PLAN.margin - 1) * 100)}% дольше: ${worst.toFixed(1)} (${worstAt}), ${SEEDS} шахт × ${FLOORS} этажей`);
 
 /* ---------- 3. серии и передышки ---------- */

@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html lang="ru">
 <!-- ХРОНОЛИФТ: офлайн-сборка в один файл, не редактировать вручную.
-     Пересобрать: node tools/build_offline.js (из game/test-yandex.html и game/Assets). Сборка c0ea49d99a0e1dc3 -->
+     Пересобрать: node tools/build_offline.js (из game/test-yandex.html и game/Assets). Сборка a6ad397e3d280df7 -->
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>ХРОНОЛИФТ — офлайн</title>
-<meta name="chronolift-build" content="c0ea49d99a0e1dc3">
+<meta name="chronolift-build" content="a6ad397e3d280df7">
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #0b0f17; overflow: hidden; touch-action: none; }
   #game { width: 100%; height: 100%; }
@@ -129,7 +129,7 @@
     });
     return addFile.apply(this, arguments);
   };
-  window.__OFFLINE_BUILD = "c0ea49d99a0e1dc3";
+  window.__OFFLINE_BUILD = "a6ad397e3d280df7";
 })();
 </script>
 <!-- Core -->
@@ -1568,6 +1568,9 @@ const TRAP_SPANS = {
  * передышка: увеличенный промежуток, за который энергия гарантированно восстанавливается до
  * полной. Проверка: test/audit_passability.js (математика) и test/sim_players.js (симуляция).
  *
+ * Раз в bonusEvery этажей передышка удлиняется до bonusSec секунд свободного хода — в ней идёт
+ * мини-игра (Minigames.js). Длиннее передышка — больше восстановления, гарантия только крепче.
+ *
  * Без Phaser: rng, зоны ловушек (TRAP_SPANS) и баланс (CFG) передаются снаружи.
  */
 'use strict';
@@ -1579,6 +1582,8 @@ const PLAN = {
   seriesMax: 4,
   restMin: 150,        // передышка после серии — не короче этого (px сверх обычного шага этажей)
   playerH: 94,         // рост хитбокса игрока: контакт с зоной = её высота + 94 px
+  bonusEvery: 4,       // мини-игра не чаще, чем раз в столько этажей, и не раньше, чем пройдено столько
+  bonusSec: 4,         // свободный ход передышки с мини-игрой, с: 3 с игры + 1 с до следующей ловушки
   types: ['spikes', 'saw', 'laser', 'crusher', 'tesla']
 };
 
@@ -1593,6 +1598,7 @@ class FloorPlanner {
     this.prevY1 = null;          // верх зоны предыдущего этажа (относительно его пола)
     this.threatsLeft = 0;        // сколько угроз ещё в текущей серии
     this.seriesNo = 0;
+    this.lastBonusJ = 0;         // перед каким этажом была последняя передышка с мини-игрой
   }
 
   /* скорость на этаже j, пока игрок его не прошёл (меньше — дольше держать: худший случай) */
@@ -1650,12 +1656,22 @@ class FloorPlanner {
     return this.cfg.floorH + Math.max(PLAN.restMin, Math.ceil(needFree - baseFree));
   }
 
+  /* передышка с мини-игрой: от выхода из зоны прошлого этажа до входа в зону следующего
+   * не меньше bonusSec секунд (зону следующего берём худшую — самую низкую) */
+  bonusStep(step, j) {
+    if (j - 1 < PLAN.bonusEvery || j - this.lastBonusJ < PLAN.bonusEvery) return { step, bonus: false };
+    this.lastBonusJ = j;
+    const y2max = Math.max(...PLAN.types.map(t => this.spans[t].y2));
+    const need = Math.ceil(PLAN.bonusSec * this.speedAt(j) - this.prevY1 + y2max + PLAN.playerH);
+    return { step: Math.max(step, need), bonus: true };
+  }
+
   /* следующий этаж: { types, step, seriesStart } — step: расстояние от предыдущего этажа (px).
    * forced — обязательный набор ловушек (уроки обучения). */
   next(forced) {
     const j = this.j + 1;
     let step = this.cfg.floorH;
-    let seriesStart = false;
+    let seriesStart = false, bonus = false;
     const startSeries = () => {
       this.seriesNo++;
       seriesStart = true;
@@ -1666,6 +1682,7 @@ class FloorPlanner {
       if (this.prevY1 !== null) {
         // серия кончилась: передышка до полной энергии (зону следующего этажа берём худшую — выше всех)
         step = this.restStep({ y2: Math.max(...PLAN.types.map(t => this.spans[t].y2)) }, j);
+        ({ step, bonus } = this.bonusStep(step, j));
         this.energy = this.cfg.energyMax;
         this.prevY1 = null;              // после передышки — как с полной батареей
       }
@@ -1685,7 +1702,7 @@ class FloorPlanner {
       // не помещается ничего: серия заканчивается раньше, передышка перед этим этажом
       const types = forced || candidates[0];
       const zone = this.zoneOf(types);
-      step = this.prevY1 === null ? step : this.restStep(zone, j);
+      if (this.prevY1 !== null) ({ step, bonus } = this.bonusStep(this.restStep(zone, j), j));
       this.energy = this.cfg.energyMax;
       this.prevY1 = null;
       startSeries();
@@ -1702,7 +1719,7 @@ class FloorPlanner {
     this.energy = res.after;
     this.prevY1 = res.zone.y1;
     this.threatsLeft -= chosen.length;
-    return { types: chosen, step, seriesStart, series: this.seriesNo, worstEnergy: res.after };
+    return { types: chosen, step, seriesStart, bonus, series: this.seriesNo, worstEnergy: res.after };
   }
 }
 
@@ -1858,6 +1875,8 @@ LiftPlatform.LAP_MS = 1500;    // оборот минутной стрелки
  *  1) «Калибровка» — вращающийся маркер, тап в зелёном секторе;
  *  2) «Заряд ячейки» — игла летает туда-сюда, тап останавливает в зелёной зоне.
  * Награда: энергия + монеты. Нет штрафа за промах — только упущенный бонус.
+ * Появляется только в длинной передышке между сериями ловушек (FloorPlanner.bonusStep,
+ * GameScene.checkBonusGap). Нажатие во время мини-игры время не останавливает — энергия не тратится.
  */
 'use strict';
 
@@ -1868,13 +1887,13 @@ class MinigameManager {
     this.count = 0;
   }
 
-  /* запуск через каждые 4 этажа после 4-го */
-  maybeStart(floorsPassed) {
-    if (this.active) return;
-    if (floorsPassed < 4 || floorsPassed % 4 !== 0) return;
+  /* запуск в начале передышки; lifeMs — сколько есть до следующей ловушки (с запасом в 1 с) */
+  start(lifeMs) {
+    if (this.active || lifeMs < MinigameManager.MIN_MS) return;
     this.count++;
     if (this.count % 2 === 1) this.startCalibration();
     else this.startCharge();
+    this.active.life = Math.min(MinigameManager.MAX_MS, lifeMs);
     AnalyticsService.track('minigame_start', { type: this.active.type });
   }
 
@@ -2015,6 +2034,8 @@ class MinigameManager {
     }
   }
 }
+MinigameManager.MIN_MS = 2000;   // короче — не успеть: оборот маркера 1,5 с
+MinigameManager.MAX_MS = 5200;
 
 </script>
 <script>/* Assets/Scripts/Gameplay/GameScene.js */
@@ -2052,6 +2073,10 @@ class GameScene extends Phaser.Scene {
     this.lastFloorY = 700;
     this.pendingPlan = null;
     this.floorIdx = 0;
+    this.lastFloorTypes = null;
+    // передышки под мини-игру (FloorPlanner.bonusStep): где игрок выходит из зоны прошлой ловушки
+    // и где входит в зону следующей — мини-игра идёт между ними
+    this.bonusGaps = [];
     this.prefabs = this.cache.json.get('trap_prefabs');
 
     // фон шахты
@@ -2101,21 +2126,19 @@ class GameScene extends Phaser.Scene {
   }
 
   bindInput() {
-    this.input.on('pointerdown', () => { this.held = true; this.pressT = this.time.now; this.sfx.ensure(); });
-    this.input.on('pointerup', () => {
-      this.held = false;
-      // короткий тап = попытка в миниигре (удержание — заморозка времени)
-      if (this.pressT && this.time.now - this.pressT < 250) this.minigames.tap();
-      this.pressT = 0;
-    });
+    // во время мини-игры нажатие сразу засчитывается в ней и удержанием не считается: иначе после
+    // ответа палец ещё на экране — и время остановилось бы, тратя энергию
+    const press = () => {
+      this.sfx.ensure();
+      if (this.minigames.active) { this.minigames.tap(); return; }
+      this.held = true;
+    };
+    this.input.on('pointerdown', press);
+    this.input.on('pointerup', () => { this.held = false; });
     const kb = this.input.keyboard;
     if (kb) {
-      kb.on('keydown-SPACE', () => { this.held = true; this.pressT = this.time.now; this.sfx.ensure(); });
-      kb.on('keyup-SPACE', () => {
-        this.held = false;
-        if (this.pressT && this.time.now - this.pressT < 250) this.minigames.tap();
-        this.pressT = 0;
-      });
+      kb.on('keydown-SPACE', (e) => { if (!e.repeat) press(); });
+      kb.on('keyup-SPACE', () => { this.held = false; });
     }
   }
 
@@ -2210,8 +2233,17 @@ class GameScene extends Phaser.Scene {
       }
       const y = this.lastFloorY - this.pendingPlan.step;
       if (y <= this.roofY - 2400) break;
-      this.spawnFloor(y, this.pendingPlan.types);
+      const types = this.pendingPlan.types;
+      if (this.pendingPlan.bonus && this.lastFloorTypes) {
+        const span = (ts, k, f) => f(...ts.map((t) => TRAP_SPANS[t][k]));
+        this.bonusGaps.push({
+          clearRoofY: this.lastFloorY + span(this.lastFloorTypes, 'y1', Math.min) - 2,    // низ игрока выше зоны
+          contactRoofY: y + span(types, 'y2', Math.max) + PLAN.playerH - 2                // верх игрока у зоны
+        });
+      }
+      this.spawnFloor(y, types);
       this.lastFloorY = y;
+      this.lastFloorTypes = types;
       this.pendingPlan = null;
     }
   }
@@ -2245,6 +2277,9 @@ class GameScene extends Phaser.Scene {
 
     this.minigames.update(dtMs);
     if (window.__AUTOTEST) this.minigames.autoSolve();
+    // во время мини-игры ловушек рядом нет: нажатие — ответ в мини-игре, время не останавливается
+    // и энергия не тратится (иначе промах перед серией ловушек стоил бы энергии)
+    if (this.minigames.active) wantHold = false;
 
     if (wantHold && !this.frozen && !this.overload && this.energy > 1) this.setFrozen(true);
     if ((!wantHold || this.overload) && this.frozen) this.setFrozen(false);
@@ -2252,6 +2287,7 @@ class GameScene extends Phaser.Scene {
     const speedMul = window.__AUTOTEST ? 10 : 1;
     const speed = Math.min(CFG.maxSpeed, CFG.baseSpeed + this.floorsPassed * CFG.speedPerFloor) * speedMul;
     this.roofY -= speed * dt;
+    this.checkBonusGap(speed);
 
     if (this.frozen) {
       this.frozenAcc += dt;
@@ -2356,11 +2392,19 @@ class GameScene extends Phaser.Scene {
       this.combo = 0;
     }
 
-    // миниигра каждые 4 этажа после 4-го
-    this.minigames.maybeStart(this.floorsPassed);
+  }
+
+  /* мини-игра — в начале передышки, как только игрок вышел из зоны последней ловушки серии;
+   * заканчивается за секунду до зоны следующей (Minigames.start) */
+  checkBonusGap(speed) {
+    const gap = this.bonusGaps[0];
+    if (!gap || this.roofY >= gap.clearRoofY) return;
+    this.bonusGaps.shift();
+    if (this.dead) return;
+    this.minigames.start((this.roofY - gap.contactRoofY) / speed * 1000 - 1000);
     if (this.minigames.active && !this.minigameHintShown) {
       this.minigameHintShown = true;
-      this.hud.toast('Нажми КОРОТКО в зелёной зоне!', '#57f2ff');
+      this.hud.toast('Нажми, когда отметка в зелёной зоне!', '#57f2ff');
     }
   }
 

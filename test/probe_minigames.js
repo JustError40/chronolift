@@ -103,36 +103,66 @@ async function main() {
   console.log('AFTER-HOLD:', st1);
   console.log('NEAR-TRAP:', st2);
 
-  /* ---- Фаза 2: автотест, миниигры ---- */
-  await send('Page.navigate', { url: BASE + '?autotest=1' });
+  /* ---- Фаза 2: мини-игры на обычной скорости (в ?autotest=1 лифт в 10 раз быстрее, и передышка
+   * под мини-игру длится доли секунды). Игрок неуязвим, ловушки сами не трогаем. Проверяем:
+   * мини-игра начинается, когда игрок вне зон ловушек, и кончается до входа в зону следующей;
+   * нажатие в ней засчитывается, время не останавливает и энергию не тратит ---- */
+  let fail = 0;
+  const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FAIL ') + msg); if (!ok) fail++; };
+  await send('Page.navigate', { url: BASE });
   await sleep(4000);
-  let miniShots = 0, maxCount = 0, sawActive = false;
-  for (let i = 0; i < 70; i++) {
-    const st = await evaluate("(()=>{const s=__GAME.scene.getScene('Game');return s?JSON.stringify({active:!!(s.minigames&&s.minigames.active),count:s.minigames?s.minigames.count:0,fp:s.floorsPassed,dead:s.dead}):null})()");
-    if (st) {
-      const o = JSON.parse(st);
-      maxCount = Math.max(maxCount, o.count);
-      if (o.active && !sawActive && miniShots < 2) {
-        sawActive = true; miniShots++;
-        await screenshot('mini_' + o.count + '.png');
-      }
-      if (!o.active) sawActive = false;
-      if (o.fp >= 20) break;
+  await evaluate("save.seenWelcome = true; save.tutorialDone = true; if (DailyService.pending()) DailyService.claim(); __GAME.scene.getScenes(true)[0].scene.start('Game'); 1");
+  await sleep(1000);
+  await evaluate("__GAME.scene.getScene('Game').invincible = 9999; 1");
+  // зона ловушки по TRAP_SPANS пересекается с игроком (roofY − 92 … roofY + 2)? и через сколько секунд вход в ближайшую
+  const STATE = `(() => { const s = __GAME.scene.getScene('Game'); const a = s.minigames.active;
+    const v = Math.min(CFG.maxSpeed, CFG.baseSpeed + s.floorsPassed * CFG.speedPerFloor);
+    let inZone = false, nextIn = Infinity;
+    for (const tr of s.traps) {
+      const sp = TRAP_SPANS[tr.type], z1 = tr.ledgeY + sp.y1, z2 = tr.ledgeY + sp.y2;
+      if (s.roofY - 92 < z2 && s.roofY + 2 > z1) inZone = true;
+      else if (z2 < s.roofY - 92) nextIn = Math.min(nextIn, (s.roofY - 92 - z2) / v);
     }
-    await sleep(400);
+    return JSON.stringify({ active: !!a, life: a ? Math.round(a.life) : 0, count: s.minigames.count, inZone, nextIn: +nextIn.toFixed(2),
+      frozen: s.frozen, energy: +s.energy.toFixed(1), fp: s.floorsPassed, coins: s.coinsRun }); })()`;
+  let seen = 0, tapped = false, shots = 0, prevActive = false, overlapWhileActive = 0;
+  for (let i = 0; i < 900 && seen < 2; i++) {          // до 90 с
+    const o = JSON.parse(await evaluate(STATE));
+    if (o.active && o.inZone) overlapWhileActive++;
+    if (o.active && !prevActive) {
+      seen++;
+      console.log('MINIGAME START:', JSON.stringify(o));
+      check(!o.inZone, `мини-игра ${seen} началась вне зон ловушек (этаж ${o.fp})`);
+      check(o.nextIn >= o.life / 1000 + 0.8, `мини-игра ${seen} кончится за ${(o.nextIn - o.life / 1000).toFixed(2)} с до зоны следующей ловушки`);
+      if (shots < 2) { shots++; await screenshot('mini_' + seen + '.png'); }
+      if (!tapped) {
+        // нажать и держать: ответ засчитан, время не остановилось, энергия не потрачена
+        // энергия не полная — иначе расход не был бы виден (выше максимума она не растёт)
+        tapped = true;
+        await evaluate("__GAME.scene.getScene('Game').energy = 50; 1");
+        await pressAt(240, 700);
+        await sleep(500);
+        const p = JSON.parse(await evaluate(STATE));
+        await releaseAt();
+        console.log('AFTER TAP+HOLD:', JSON.stringify(p));
+        check(!p.active, 'нажатие засчитано в мини-игре');
+        check(!p.frozen, 'нажатие в мини-игре не остановило время (даже если палец остался на экране)');
+        check(p.energy >= 50, `энергия не потрачена: 50 → ${p.energy} (выигрыш добавляет 12–15)`);
+      }
+    }
+    prevActive = o.active;
+    await sleep(100);
   }
-  const miniResult = await evaluate("(()=>{const s=__GAME.scene.getScene('Game');return s?JSON.stringify({count:s.minigames.count,floorsPassed:s.floorsPassed,energy:Math.round(s.energy),coinsRun:s.coinsRun}):null})()");
-  const analytics = await evaluate("(localStorage.getItem('chronolift_analytics')||'[]')");
-  const miniEvents = analytics ? (analytics.match(/minigame_start/g) || []).length : 0;
-  const miniWins = analytics ? (analytics.match(/minigame_result/g) || []).length : 0;
-  console.log('MINIGAME-RUN:', miniResult, 'starts:', miniEvents, 'results:', miniWins, 'maxCount:', maxCount);
+  check(seen >= 2, 'за забег было ' + seen + ' мини-игры');
+  check(overlapWhileActive === 0, 'пока идёт мини-игра, игрок ни разу не в зоне ловушки');
   await screenshot('edu_3_autotest_late.png');
   const errors = await evaluate('JSON.stringify(window.__ERRORS||[])');
   console.log('ERRORS:', errors);
 
   ws.close();
   try { chrome.kill(); } catch (e) {}
-  process.exit(0);
+  console.log(fail ? 'FAIL: ' + fail : 'ALL PASS');
+  process.exit(fail ? 1 : 0);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

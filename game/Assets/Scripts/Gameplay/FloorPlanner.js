@@ -12,6 +12,9 @@
  * передышка: увеличенный промежуток, за который энергия гарантированно восстанавливается до
  * полной. Проверка: test/audit_passability.js (математика) и test/sim_players.js (симуляция).
  *
+ * Раз в bonusEvery этажей передышка удлиняется до bonusSec секунд свободного хода — в ней идёт
+ * мини-игра (Minigames.js). Длиннее передышка — больше восстановления, гарантия только крепче.
+ *
  * Без Phaser: rng, зоны ловушек (TRAP_SPANS) и баланс (CFG) передаются снаружи.
  */
 'use strict';
@@ -23,6 +26,8 @@ const PLAN = {
   seriesMax: 4,
   restMin: 150,        // передышка после серии — не короче этого (px сверх обычного шага этажей)
   playerH: 94,         // рост хитбокса игрока: контакт с зоной = её высота + 94 px
+  bonusEvery: 4,       // мини-игра не чаще, чем раз в столько этажей, и не раньше, чем пройдено столько
+  bonusSec: 4,         // свободный ход передышки с мини-игрой, с: 3 с игры + 1 с до следующей ловушки
   types: ['spikes', 'saw', 'laser', 'crusher', 'tesla']
 };
 
@@ -37,6 +42,7 @@ class FloorPlanner {
     this.prevY1 = null;          // верх зоны предыдущего этажа (относительно его пола)
     this.threatsLeft = 0;        // сколько угроз ещё в текущей серии
     this.seriesNo = 0;
+    this.lastBonusJ = 0;         // перед каким этажом была последняя передышка с мини-игрой
   }
 
   /* скорость на этаже j, пока игрок его не прошёл (меньше — дольше держать: худший случай) */
@@ -94,12 +100,22 @@ class FloorPlanner {
     return this.cfg.floorH + Math.max(PLAN.restMin, Math.ceil(needFree - baseFree));
   }
 
+  /* передышка с мини-игрой: от выхода из зоны прошлого этажа до входа в зону следующего
+   * не меньше bonusSec секунд (зону следующего берём худшую — самую низкую) */
+  bonusStep(step, j) {
+    if (j - 1 < PLAN.bonusEvery || j - this.lastBonusJ < PLAN.bonusEvery) return { step, bonus: false };
+    this.lastBonusJ = j;
+    const y2max = Math.max(...PLAN.types.map(t => this.spans[t].y2));
+    const need = Math.ceil(PLAN.bonusSec * this.speedAt(j) - this.prevY1 + y2max + PLAN.playerH);
+    return { step: Math.max(step, need), bonus: true };
+  }
+
   /* следующий этаж: { types, step, seriesStart } — step: расстояние от предыдущего этажа (px).
    * forced — обязательный набор ловушек (уроки обучения). */
   next(forced) {
     const j = this.j + 1;
     let step = this.cfg.floorH;
-    let seriesStart = false;
+    let seriesStart = false, bonus = false;
     const startSeries = () => {
       this.seriesNo++;
       seriesStart = true;
@@ -110,6 +126,7 @@ class FloorPlanner {
       if (this.prevY1 !== null) {
         // серия кончилась: передышка до полной энергии (зону следующего этажа берём худшую — выше всех)
         step = this.restStep({ y2: Math.max(...PLAN.types.map(t => this.spans[t].y2)) }, j);
+        ({ step, bonus } = this.bonusStep(step, j));
         this.energy = this.cfg.energyMax;
         this.prevY1 = null;              // после передышки — как с полной батареей
       }
@@ -129,7 +146,7 @@ class FloorPlanner {
       // не помещается ничего: серия заканчивается раньше, передышка перед этим этажом
       const types = forced || candidates[0];
       const zone = this.zoneOf(types);
-      step = this.prevY1 === null ? step : this.restStep(zone, j);
+      if (this.prevY1 !== null) ({ step, bonus } = this.bonusStep(this.restStep(zone, j), j));
       this.energy = this.cfg.energyMax;
       this.prevY1 = null;
       startSeries();
@@ -146,6 +163,6 @@ class FloorPlanner {
     this.energy = res.after;
     this.prevY1 = res.zone.y1;
     this.threatsLeft -= chosen.length;
-    return { types: chosen, step, seriesStart, series: this.seriesNo, worstEnergy: res.after };
+    return { types: chosen, step, seriesStart, bonus, series: this.seriesNo, worstEnergy: res.after };
   }
 }

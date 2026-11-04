@@ -32,6 +32,10 @@ class GameScene extends Phaser.Scene {
     this.lastFloorY = 700;
     this.pendingPlan = null;
     this.floorIdx = 0;
+    this.lastFloorTypes = null;
+    // передышки под мини-игру (FloorPlanner.bonusStep): где игрок выходит из зоны прошлой ловушки
+    // и где входит в зону следующей — мини-игра идёт между ними
+    this.bonusGaps = [];
     this.prefabs = this.cache.json.get('trap_prefabs');
 
     // фон шахты
@@ -81,21 +85,19 @@ class GameScene extends Phaser.Scene {
   }
 
   bindInput() {
-    this.input.on('pointerdown', () => { this.held = true; this.pressT = this.time.now; this.sfx.ensure(); });
-    this.input.on('pointerup', () => {
-      this.held = false;
-      // короткий тап = попытка в миниигре (удержание — заморозка времени)
-      if (this.pressT && this.time.now - this.pressT < 250) this.minigames.tap();
-      this.pressT = 0;
-    });
+    // во время мини-игры нажатие сразу засчитывается в ней и удержанием не считается: иначе после
+    // ответа палец ещё на экране — и время остановилось бы, тратя энергию
+    const press = () => {
+      this.sfx.ensure();
+      if (this.minigames.active) { this.minigames.tap(); return; }
+      this.held = true;
+    };
+    this.input.on('pointerdown', press);
+    this.input.on('pointerup', () => { this.held = false; });
     const kb = this.input.keyboard;
     if (kb) {
-      kb.on('keydown-SPACE', () => { this.held = true; this.pressT = this.time.now; this.sfx.ensure(); });
-      kb.on('keyup-SPACE', () => {
-        this.held = false;
-        if (this.pressT && this.time.now - this.pressT < 250) this.minigames.tap();
-        this.pressT = 0;
-      });
+      kb.on('keydown-SPACE', (e) => { if (!e.repeat) press(); });
+      kb.on('keyup-SPACE', () => { this.held = false; });
     }
   }
 
@@ -190,8 +192,17 @@ class GameScene extends Phaser.Scene {
       }
       const y = this.lastFloorY - this.pendingPlan.step;
       if (y <= this.roofY - 2400) break;
-      this.spawnFloor(y, this.pendingPlan.types);
+      const types = this.pendingPlan.types;
+      if (this.pendingPlan.bonus && this.lastFloorTypes) {
+        const span = (ts, k, f) => f(...ts.map((t) => TRAP_SPANS[t][k]));
+        this.bonusGaps.push({
+          clearRoofY: this.lastFloorY + span(this.lastFloorTypes, 'y1', Math.min) - 2,    // низ игрока выше зоны
+          contactRoofY: y + span(types, 'y2', Math.max) + PLAN.playerH - 2                // верх игрока у зоны
+        });
+      }
+      this.spawnFloor(y, types);
       this.lastFloorY = y;
+      this.lastFloorTypes = types;
       this.pendingPlan = null;
     }
   }
@@ -225,6 +236,9 @@ class GameScene extends Phaser.Scene {
 
     this.minigames.update(dtMs);
     if (window.__AUTOTEST) this.minigames.autoSolve();
+    // во время мини-игры ловушек рядом нет: нажатие — ответ в мини-игре, время не останавливается
+    // и энергия не тратится (иначе промах перед серией ловушек стоил бы энергии)
+    if (this.minigames.active) wantHold = false;
 
     if (wantHold && !this.frozen && !this.overload && this.energy > 1) this.setFrozen(true);
     if ((!wantHold || this.overload) && this.frozen) this.setFrozen(false);
@@ -232,6 +246,7 @@ class GameScene extends Phaser.Scene {
     const speedMul = window.__AUTOTEST ? 10 : 1;
     const speed = Math.min(CFG.maxSpeed, CFG.baseSpeed + this.floorsPassed * CFG.speedPerFloor) * speedMul;
     this.roofY -= speed * dt;
+    this.checkBonusGap(speed);
 
     if (this.frozen) {
       this.frozenAcc += dt;
@@ -336,11 +351,19 @@ class GameScene extends Phaser.Scene {
       this.combo = 0;
     }
 
-    // миниигра каждые 4 этажа после 4-го
-    this.minigames.maybeStart(this.floorsPassed);
+  }
+
+  /* мини-игра — в начале передышки, как только игрок вышел из зоны последней ловушки серии;
+   * заканчивается за секунду до зоны следующей (Minigames.start) */
+  checkBonusGap(speed) {
+    const gap = this.bonusGaps[0];
+    if (!gap || this.roofY >= gap.clearRoofY) return;
+    this.bonusGaps.shift();
+    if (this.dead) return;
+    this.minigames.start((this.roofY - gap.contactRoofY) / speed * 1000 - 1000);
     if (this.minigames.active && !this.minigameHintShown) {
       this.minigameHintShown = true;
-      this.hud.toast('Нажми КОРОТКО в зелёной зоне!', '#57f2ff');
+      this.hud.toast('Нажми, когда отметка в зелёной зоне!', '#57f2ff');
     }
   }
 

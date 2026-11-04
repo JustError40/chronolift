@@ -3,6 +3,8 @@
  *  1) «Калибровка» — вращающийся маркер, тап в зелёном секторе;
  *  2) «Заряд ячейки» — игла летает туда-сюда, тап останавливает в зелёной зоне.
  * Награда: энергия + монеты. Нет штрафа за промах — только упущенный бонус.
+ * Появляется только в длинной передышке между сериями ловушек (FloorPlanner.bonusStep,
+ * GameScene.checkBonusGap). Нажатие во время мини-игры время не останавливает — энергия не тратится.
  */
 'use strict';
 
@@ -13,13 +15,13 @@ class MinigameManager {
     this.count = 0;
   }
 
-  /* запуск через каждые 4 этажа после 4-го */
-  maybeStart(floorsPassed) {
-    if (this.active) return;
-    if (floorsPassed < 4 || floorsPassed % 4 !== 0) return;
+  /* запуск в начале передышки; lifeMs — сколько есть до следующей ловушки (с запасом в 1 с) */
+  start(lifeMs) {
+    if (this.active || lifeMs < MinigameManager.MIN_MS) return;
     this.count++;
     if (this.count % 2 === 1) this.startCalibration();
     else this.startCharge();
+    this.active.life = Math.min(MinigameManager.MAX_MS, lifeMs);
     AnalyticsService.track('minigame_start', { type: this.active.type });
   }
 
@@ -160,3 +162,5 @@ class MinigameManager {
     }
   }
 }
+MinigameManager.MIN_MS = 2000;   // короче — не успеть: оборот маркера 1,5 с
+MinigameManager.MAX_MS = 5200;
