@@ -165,4 +165,4 @@ node test/shots_defense.js     # переснять скриншоты для do
 ## Публикация
 
 Пошаговый чек-лист — в [docs/PUBLISHING.md](docs/PUBLISHING.md).
-Релизный архив собирается из `game/` (index.html в корне, ~0,6 МБ).
+Архив для загрузки: `python tools/build_release.py` → `releases/chronolift-yandex.zip` (index.html в корне, ~11 МБ).
